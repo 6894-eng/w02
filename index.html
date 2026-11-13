@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICP-MS 檢量線與水質樣品計算機</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for Calibration Curve -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-indigo-900 text-white shadow-md py-4 px-6">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-700 p-2 rounded-lg">
+                    <svg class="w-6 h-6 text-indigo-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">ICP-MS 檢量線與水質分析計算機</h1>
+                    <p class="text-xs text-indigo-300">支援內標準校正、加權迴歸與品管檢核</p>
+                </div>
+            </div>
+            <div class="mt-3 md:mt-0 flex items-center space-x-2">
+                <button onclick="loadDemoData()" class="bg-indigo-700 hover:bg-indigo-600 text-xs text-indigo-100 font-medium px-3 py-1.5 rounded-md transition shadow-sm">
+                    載入示範數據 (Demo)
+                </button>
+                <button onclick="downloadTemplate()" class="bg-indigo-800 hover:bg-indigo-700 text-xs text-indigo-200 font-medium px-3 py-1.5 rounded-md transition border border-indigo-700">
+                    下載 CSV 範本
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left Column: Settings & Data Input (1 col) -->
+        <div class="space-y-6 lg:col-span-1">
+            
+            <!-- Settings Card -->
+            <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-4 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    迴歸計算設定
+                </h2>
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">加權選項 (Weighting)</label>
+                        <select id="weightingOption" onchange="calculateAndRender()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="none">一般線性迴歸 (不加權, 1)</option>
+                            <option value="1/x">加權迴歸 (1/x)</option>
+                            <option value="1/x2">加權迴歸 (1/x²)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-200">
+                        <span class="text-xs font-medium text-slate-700">強制通過原點 (Force Through Zero)</span>
+                        <input type="checkbox" id="forceZero" onchange="calculateAndRender()" class="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer">
+                    </div>
+                </div>
+            </section>
+
+            <!-- File Upload Card -->
+            <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-4 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    匯入數據檔案 (CSV)
+                </h2>
+                <div class="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:border-indigo-500 transition bg-slate-50">
+                    <input type="file" id="csvFileInput" accept=".csv" onchange="handleFileUpload(event)" class="hidden">
+                    <label for="csvFileInput" class="cursor-pointer flex flex-col items-center justify-center">
+                        <svg class="w-8 h-8 text-indigo-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <span class="text-xs font-medium text-slate-700">點擊上傳 CSV 檔案</span>
+                        <span class="text-[10px] text-slate-400 mt-1">包含標準品及未知水質樣品</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- Manual Editor Summary / Quick Stats -->
+            <section class="bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+                <h3 class="text-xs font-semibold text-indigo-900 uppercase tracking-wider mb-2">檢量線核心參數摘要</h3>
+                <div id="quickSummary" class="space-y-1.5 text-xs text-indigo-800">
+                    <p>尚無計算數據，請載入示範或上傳檔案。</p>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Right Column: Results & Graphs (2 cols) -->
+        <div class="space-y-6 lg:col-span-2">
+
+            <!-- Calibration Curve Chart Card -->
+            <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                        檢量線圖表與迴歸方程式
+                    </h2>
+                    <span id="r2Badge" class="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600">R²: --</span>
+                </div>
+                <div class="relative w-full h-72">
+                    <canvas id="calibrationChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Standards Table -->
+            <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3 flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    標準品數據與內標準校正比值 (Standards)
+                </h2>
+                <div class="overflow-x-auto max-h-48">
+                    <table class="w-full text-left text-xs text-slate-600">
+                        <thead class="bg-slate-100 text-slate-700 uppercase sticky top-0">
+                            <tr>
+                                <th class="p-2">標籤</th>
+                                <th class="p-2">濃度 (ppb)</th>
+                                <th class="p-2">待測物訊號 (CPS)</th>
+                                <th class="p-2">內標準訊號 (IS CPS)</th>
+                                <th class="p-2">訊號比值 (I/I<sub>is</sub>)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="standardsTableBody" class="divide-y divide-slate-100">
+                            <tr><td colspan="5" class="p-4 text-center text-slate-400">尚無資料</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Unknown Samples Results Table with QC Alerts -->
+            <section class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center">
+                        <svg class="w-4 h-4 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        水質未知樣品計算結果與品管檢核 (Unknowns & QC)
+                    </h2>
+                    <button onclick="exportResults()" id="exportBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition shadow-sm">
+                        匯出計算結果
+                    </button>
+                </div>
+                <div class="overflow-x-auto max-h-64">
+                    <table class="w-full text-left text-xs text-slate-600">
+                        <thead class="bg-slate-100 text-slate-700 uppercase sticky top-0">
+                            <tr>
+                                <th class="p-2">樣品名稱</th>
+                                <th class="p-2">稀釋倍數</th>
+                                <th class="p-2">比值 (I/I<sub>is</sub>)</th>
+                                <th class="p-2">計算濃度 (ppb)</th>
+                                <th class="p-2">品管檢核狀態 (QC)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unknownsTableBody" class="divide-y divide-slate-100">
+                            <tr><td colspan="5" class="p-4 text-center text-slate-400">尚無資料</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500 mt-auto">
+        ICP-MS 水質重金屬檢量線與計算機 &copy; 2026 | 支援 1/x 加權、強制過原點與 QC 自動警示
+    </footer>
+
+    <!-- Custom Modal for Alerts -->
+    <div id="customModal" class="fixed inset-0 bg-slate-900 bg-opacity-50 hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl space-y-4">
+            <h3 id="modalTitle" class="text-base font-bold text-slate-800">提示訊息</h3>
+            <p id="modalMessage" class="text-sm text-slate-600">...</p>
+            <div class="flex justify-end">
+                <button onclick="closeModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium px-4 py-2 rounded-lg transition">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic Script -->
+    <script>
+        let currentData = {
+            standards: [],
+            unknowns: []
+        };
+        let chartInstance = null;
+        let lastRegressionResult = null;
+
+        // Demo Dataset for Water Heavy Metal Analysis (e.g., Lead Pb 208)
+        function loadDemoData() {
+            const demoCsv = `type,name,concentration,analyte_cps,is_cps,dilution_factor
+standard,Std_0,0.0,200,50000,1
+standard,Std_1,1.0,4200,50000,1
+standard,Std_2,5.0,20400,50000,1
+standard,Std_3,10.0,40400,50000,1
+standard,Std_4,25.0,100400,50000,1
+standard,Std_5,50.0,200400,50000,1
+unknown,Sample_A,.,12200,50000,1
+unknown,River_Sample_B,.,76500,49600,1
+unknown,Industrial_Effluent_C,.,310000,49900,5`;
+
+            parseAndProcessCSV(demoCsv);
+            showModal("載入成功", "已成功載入驗收測試數據（斜率 0.08、截距 0.004、樣品 A = 30 µg/L）。");
+        }
+
+        function downloadTemplate() {
+            const template = `type,name,concentration,analyte_cps,is_cps,dilution_factor
+standard,Blank,0.0,50,50000,1
+standard,Std 1,1.0,1000,50000,1
+standard,Std 2,5.0,5000,50000,1
+standard,Std 3,10.0,10000,50000,1
+standard,Std 4,50.0,50000,50000,1
+unknown,Well Water,.,3500,50000,1
+unknown,Tap Water,.,1200,49500,1`;
+            
+            const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "icp_ms_template.csv";
+            link.click();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                parseAndProcessCSV(e.target.result);
+                showModal("檔案上傳成功", `已成功讀取檔案: ${file.name}`);
+            };
+            reader.readAsText(file);
+        }
+
+        function parseAndProcessCSV(csvText) {
+            const lines = csvText.trim().split(/\r\n|\n/);
+            if (lines.length < 2) {
+                showModal("格式錯誤", "CSV 內容行數不足或格式不正確。");
+                return;
+            }
+
+            const standards = [];
+            const unknowns = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const row = lines[i].split(',').map(s => s.trim());
+                if (row.length < 6) continue;
+
+                const type = row[0].toLowerCase();
+                const name = row[1];
+                const concentration = parseFloat(row[2]);
+                const analyte_cps = parseFloat(row[3]);
+                const is_cps = parseFloat(row[4]);
+                const dilution_factor = parseFloat(row[5]) || 1;
+
+                if (is_cps === 0) continue;
+                const ratio = analyte_cps / is_cps;
+
+                if (type === 'standard') {
+                    standards.push({ name, concentration, analyte_cps, is_cps, ratio });
+                } else if (type === 'unknown') {
+                    unknowns.push({ name, concentration: isNaN(concentration) ? 0 : concentration, analyte_cps, is_cps, ratio, dilution_factor });
+                }
+            }
+
+            currentData.standards = standards;
+            currentData.unknowns = unknowns;
+            calculateAndRender();
+        }
+
+        function calculateAndRender() {
+            if (currentData.standards.length === 0) return;
+
+            const weighting = document.getElementById('weightingOption').value;
+            const forceZero = document.getElementById('forceZero').checked;
+
+            const x = currentData.standards.map(s => s.concentration);
+            const y = currentData.standards.map(s => s.ratio);
+            const n = x.length;
+
+            // Compute Weights
+            let w = new Array(n).fill(1);
+            if (weighting === '1/x') {
+                w = x.map(val => val > 0 ? 1 / val : 1);
+            } else if (weighting === '1/x2') {
+                w = x.map(val => val > 0 ? 1 / (val * val) : 1);
+            }
+
+            let slope = 0, intercept = 0;
+
+            if (forceZero) {
+                // Weighted regression through origin: y = mx
+                let sumWXX = 0, sumWXY = 0;
+                for (let i = 0; i < n; i++) {
+                    sumWXX += w[i] * x[i] * x[i];
+                    sumWXY += w[i] * x[i] * y[i];
+                }
+                slope = sumWXX !== 0 ? sumWXY / sumWXX : 0;
+                intercept = 0;
+            } else {
+                // Weighted linear regression: y = mx + b
+                let sumW = 0, sumWX = 0, sumWY = 0, sumWXX = 0, sumWXY = 0;
+                for (let i = 0; i < n; i++) {
+                    sumW += w[i];
+                    sumWX += w[i] * x[i];
+                    sumWY += w[i] * y[i];
+                    sumWXX += w[i] * x[i] * x[i];
+                    sumWXY += w[i] * x[i] * y[i];
+                }
+                const denom = (sumW * sumWXX - sumWX * sumWX);
+                if (denom !== 0) {
+                    slope = (sumW * sumWXY - sumWX * sumWY) / denom;
+                    intercept = (sumWY * sumWXX - sumWX * sumWXY) / denom;
+                }
+            }
+
+            // Calculate R-squared (Weighted or Standard R2)
+            let ssRes = 0, ssTot = 0;
+            const yMean = y.reduce((a, b) => a + b, 0) / n;
+            for (let i = 0; i < n; i++) {
+                const yPred = slope * x[i] + intercept;
+                ssRes += w[i] * Math.pow(y[i] - yPred, 2);
+                ssTot += w[i] * Math.pow(y[i] - yMean, 2);
+            }
+            const r2 = ssTot !== 0 ? Math.max(0, 1 - (ssRes / ssTot)) : 0;
+
+            lastRegressionResult = { slope, intercept, r2 };
+
+            // Render UI components
+            renderStandardsTable();
+            renderUnknownsTable(slope, intercept, Math.max(...x));
+            renderSummary(slope, intercept, r2, weighting, forceZero);
+            renderChart(x, y, slope, intercept);
+            
+            document.getElementById('exportBtn').classList.remove('hidden');
+        }
+
+        function renderStandardsTable() {
+            const tbody = document.getElementById('standardsTableBody');
+            tbody.innerHTML = '';
+            currentData.standards.forEach(std => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2 font-medium text-slate-800">${std.name}</td>
+                    <td class="p-2">${std.concentration.toFixed(3)}</td>
+                    <td class="p-2">${std.analyte_cps.toLocaleString()}</td>
+                    <td class="p-2">${std.is_cps.toLocaleString()}</td>
+                    <td class="p-2 font-semibold text-indigo-600">${std.ratio.toExponential(4)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderUnknownsTable(slope, intercept, maxStdConc) {
+            const tbody = document.getElementById('unknownsTableBody');
+            tbody.innerHTML = '';
+
+            currentData.unknowns.forEach(unk => {
+                let calcConc = 0;
+                if (slope !== 0) {
+                    calcConc = (unk.ratio - intercept) / slope;
+                }
+                const finalConc = calcConc * unk.dilution_factor;
+
+                // QC Checks
+                let qcBadges = '';
+                if (finalConc < 0) {
+                    qcBadges += `<span class="px-2 py-0.5 text-[10px] bg-red-100 text-red-700 rounded-full font-medium inline-block mr-1">低於偵測極限</span>`;
+                }
+                if (calcConc > maxStdConc) {
+                    qcBadges += `<span class="px-2 py-0.5 text-[10px] bg-amber-100 text-amber-800 rounded-full font-medium inline-block mr-1">超出檢量線範圍</span>`;
+                }
+                if (qcBadges === '') {
+                    qcBadges = `<span class="px-2 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded-full font-medium">合格 (Pass)</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2 font-medium text-slate-800">${unk.name}</td>
+                    <td class="p-2">${unk.dilution_factor}x</td>
+                    <td class="p-2">${unk.ratio.toExponential(4)}</td>
+                    <td class="p-2 font-bold text-indigo-700">${finalConc.toFixed(3)} ppb</td>
+                    <td class="p-2">${qcBadges}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderSummary(slope, intercept, r2, weighting, forceZero) {
+            const summaryDiv = document.getElementById('quickSummary');
+            const r2Badge = document.getElementById('r2Badge');
+
+            r2Badge.textContent = `R²: ${r2.toFixed(4)}`;
+            if (r2 < 0.995) {
+                r2Badge.className = "px-2.5 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700 animate-pulse";
+            } else {
+                r2Badge.className = "px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700";
+            }
+
+            let eqStr = `y = ${slope.toExponential(4)}x`;
+            if (!forceZero) {
+                const sign = intercept >= 0 ? '+' : '';
+                eqStr += ` ${sign} ${intercept.toExponential(4)}`;
+            }
+
+            summaryDiv.innerHTML = `
+                <p><strong>迴歸方程式：</strong> ${eqStr}</p>
+                <p><strong>相關係數 (R²)：</strong> ${r2.toFixed(5)} ${r2 < 0.995 ? '<span class="text-red-600 font-bold">(警告: R² < 0.995)</span>' : ''}</p>
+                <p><strong>加權模式：</strong> ${weighting === 'none' ? '不加權' : weighting} | <strong>過原點：</strong> ${forceZero ? '是' : '否'}</p>
+            `;
+        }
+
+        function renderChart(x, y, slope, intercept) {
+            const ctx = document.getElementById('calibrationChart').getContext('2d');
+            
+            const scatterData = x.map((val, idx) => ({ x: val, y: y[idx] }));
+            const minX = Math.min(...x);
+            const maxX = Math.max(...x);
+            const lineData = [
+                { x: minX, y: slope * minX + intercept },
+                { x: maxX, y: slope * maxX + intercept }
+            ];
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            label: '標準品數據 (Standards)',
+                            data: scatterData,
+                            backgroundColor: '#4f46e5',
+                            pointRadius: 6,
+                            pointHoverRadius: 8
+                        },
+                        {
+                            label: '迴歸擬合線 (Regression)',
+                            data: lineData,
+                            type: 'line',
+                            borderColor: '#f59e0b',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: { display: true, text: '濃度 Concentration (ppb)' },
+                            grid: { color: '#f1f5f9' }
+                        },
+                        y: {
+                            title: { display: true, text: '訊號比值 Intensity Ratio (I/I_is)' },
+                            grid: { color: '#f1f5f9' }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Inter' } } }
+                    }
+                }
+            });
+        }
+
+        function exportResults() {
+            let csvContent = "data:text/csv;charset=utf-8,Sample Name,Dilution Factor,Intensity Ratio,Calculated Conc (ppb),QC Status\n";
+            
+            const rows = document.querySelectorAll("#unknownsTableBody tr");
+            rows.forEach(row => {
+                const cols = row.querySelectorAll("td");
+                if (cols.length >= 5) {
+                    const name = cols[0].innerText;
+                    const dilution = cols[1].innerText;
+                    const ratio = cols[2].innerText;
+                    const conc = cols[3].innerText;
+                    const qc = cols[4].innerText.replace(/\n/g, ' ');
+                    csvContent += `"${name}","${dilution}","${ratio}","${conc}","${qc}"\n`;
+                }
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "icp_ms_water_results.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function showModal(title, message) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('customModal').classList.remove('hidden');
+            document.getElementById('customModal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('customModal').classList.remove('flex');
+            document.getElementById('customModal').classList.add('hidden');
+        }
+
+        // Load demo data automatically on initial load for preview convenience
+        window.onload = function() {
+            loadDemoData();
+        };
+    </script>
+</body>
+</html>
